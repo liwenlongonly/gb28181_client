@@ -81,7 +81,7 @@ static void rtp_free(void * /*param*/, void * /*packet*/) {
 static int rtp_encode_packet(void *param, const void *packet, int bytes, uint32_t timestamp, int flags) {
     MediaContext *mediaContext = (MediaContext *) param;
     erizo::RtpHeader* ptr = reinterpret_cast<erizo::RtpHeader*>((char *)packet);
-    LOG_DEBUG(MSG_LOG,"RTP data ssrc:{} seq:{} len:{} ts:{}", ptr->getSSRC(), ptr->getSeqNumber() , bytes ,ptr->getTimestamp());
+    LOG_INFO(MSG_LOG,"RTP data ssrc:{} seq:{} len:{} ts:{}", ptr->getSSRC(), ptr->getSeqNumber() , bytes ,ptr->getTimestamp());
     if(mediaContext->net_connect){
        int ret = mediaContext->net_connect->sendPacket(static_cast<const char *>(packet), bytes);
        if(ret < 0){
@@ -214,6 +214,7 @@ void RtpClient::close() {
     if(net_connect_){
         net_connect_->close();
     }
+    LOG_INFO(MSG_LOG, "{} RtpClient::close()", device_config_->deviceSipId);
 }
 
 void RtpClient::process() {

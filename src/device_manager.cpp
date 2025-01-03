@@ -97,6 +97,10 @@ void DeviceManager::deviceCreate(const std::string &reqBody,std::string &reply) 
             return reply_error(reply, ERROR_MISS_PARAM, "miss param : manufacture");
         }
 
+        if(manufacture.empty()){
+            manufacture = "iLong";
+        }
+
         std::string device_name;
         if(!Rjson::GetStringV(device_name,"device_name", &dc)){
             return reply_error(reply, ERROR_MISS_PARAM, "miss param : device_name");
