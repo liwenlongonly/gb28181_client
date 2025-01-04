@@ -40,6 +40,6 @@ npm run build
 location /api {
         rewrite ^.+api/?(.*)$ /gb28181/v1/$1 break;
         include uwsgi_params;
-		proxy_pass  http://192.168.110.130:9080;
+		proxy_pass  http://127.0.0.1:9080;
 }
 ```
