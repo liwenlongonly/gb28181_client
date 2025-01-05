@@ -61,8 +61,4 @@ server {
 }
 
 ```
-## 程序展示
-
-<video width="640" height="480" controls>
-    <source src="20250105-102423.mp4" type="video/mp4">
-</video>
+![程序展示](vlcsnap-2025-01-05-10h40m09s506.png)
