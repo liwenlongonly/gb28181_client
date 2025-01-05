@@ -1,16 +1,10 @@
 //
-// Created by liwen on 2024-12-24.
+// Created by liwenlong on 2025-01-05.
 //
 
-#include <map>
-
-#include "rtp_client.h"
-#include "net_connect.h"
-#include "device_cfg.h"
 #include "defer.h"
-#include "sip_client.h"
 #include "rtp_headers.h"
-// media-server include
+#include "mp4_to_ps_rtp_test.h"
 #include "rtp-payload.h"
 #include "mov-reader.h"
 #include "mov-format.h"
@@ -18,8 +12,6 @@
 #include "mpeg4-avc.h"
 #include "mpeg4-hevc.h"
 #include "mov-file-buffer.h"
-
-NS_BEGIN
 
 #define BUFFER_SIZE 2 * 1024 * 1024
 
@@ -43,9 +35,6 @@ struct MediaContext {
 
     void *rtp_encoder{nullptr};
 
-    std::shared_ptr<NetConnect> net_connect;
-
-    bool send_packet_error{false};
 };
 
 inline const char *ftimestamp(uint32_t t, char *buf) {
@@ -81,18 +70,12 @@ static void rtp_free(void * /*param*/, void * /*packet*/) {
 static int rtp_encode_packet(void *param, const void *packet, int bytes, uint32_t timestamp, int flags) {
     MediaContext *mediaContext = (MediaContext *) param;
     erizo::RtpHeader* ptr = reinterpret_cast<erizo::RtpHeader*>((char *)packet);
-    LOG_DEBUG(MSG_LOG,"RTP data ssrc:{} seq:{} len:{} ts:{}", ptr->getSSRC(), ptr->getSeqNumber() , bytes ,ptr->getTimestamp());
-    if(mediaContext->net_connect){
-       int ret = mediaContext->net_connect->sendPacket(static_cast<const char *>(packet), bytes);
-       if(ret < 0){
-           mediaContext->send_packet_error = true;
-       }
-    }
+    LOG_INFO(MSG_LOG,"RTP data ssrc:{} seq:{} len:{} ts:{}", ptr->getSSRC(), ptr->getSeqNumber() , bytes ,ptr->getTimestamp());
     return 0;
 }
 
 static int rtp_payload_codec_create(MediaContext *ctx, int payload, const char *encoding,
-                                        uint16_t seq, uint32_t ssrc) {
+                                    uint16_t seq, uint32_t ssrc) {
     struct rtp_payload_t handler;
     handler.alloc = rtp_alloc;
     handler.free = rtp_free;
@@ -124,9 +107,6 @@ static void mov_onread(void *param, uint32_t track, const void *buffer, size_t b
 
     switch (mediaContext->object) {
         case MOV_OBJECT_H264: {
-//            printf("[H264] pts: %s, dts: %s, diff: %03d/%03d, bytes: %u%s\n", ftimestamp(pts, s_pts),
-//                   ftimestamp(dts, s_dts), (int) (pts - mediaContext->v_pts), (int) (dts - mediaContext->v_dts),
-//                   (unsigned int) bytes, flags ? " [I]" : "[P]");
             mediaContext->v_pts = pts;
             mediaContext->v_dts = dts;
 
@@ -138,13 +118,8 @@ static void mov_onread(void *param, uint32_t track, const void *buffer, size_t b
         }
         case MOV_OBJECT_HEVC: {
             uint8_t nalu_type = (((const uint8_t *) buffer)[4] >> 1) & 0x3F;
-
-//            printf("[H265] pts: %s, dts: %s, diff: %03d/%03d, bytes: %u%s,%d\n", ftimestamp(pts, s_pts),
-//                   ftimestamp(dts, s_dts), (int) (pts - mediaContext->v_pts), (int) (dts - mediaContext->v_dts),
-//                   (unsigned int) bytes, flags ? " [I]" : "[P]", (unsigned int) nalu_type);
             mediaContext->v_pts = pts;
             mediaContext->v_dts = dts;
-
             assert(h265_is_new_access_unit((const uint8_t *) buffer + 4, bytes - 4));
             int n = h265_mp4toannexb(&mediaContext->s_hevc, buffer, bytes, mediaContext->s_packet, sizeof(mediaContext->s_packet));
             ps_muxer_input(mediaContext->ps, mediaContext->streamId, flags ? 0x01 : 0x00, pts * 90, dts * 90,
@@ -152,8 +127,6 @@ static void mov_onread(void *param, uint32_t track, const void *buffer, size_t b
             break;
         }
         default:
-//            printf("[X] pts: %s, dts: %s, diff: %03d/%03d, bytes: %u\n", ftimestamp(pts, s_pts), ftimestamp(dts, s_dts),
-//                   (int) (pts - x_pts), (int) (dts - x_dts), (unsigned int) bytes);
             x_pts = pts;
             x_dts = dts;
             break;
@@ -184,50 +157,16 @@ static void* onalloc(void* param, uint32_t track, size_t bytes, int64_t pts, int
     return pkt->ptr;
 }
 
-RtpClient::RtpClient() {
+
+Mp4ToPsRtpTest::Mp4ToPsRtpTest() {
 
 }
 
-RtpClient::~RtpClient() {
+Mp4ToPsRtpTest::~Mp4ToPsRtpTest() {
 
 }
 
-void RtpClient::init(std::shared_ptr<DeviceConfig> config, std::shared_ptr<RtpConnectDelegate> delegate) {
-    device_config_ = config;
-    delegate_ = delegate;
-    net_connect_ = std::make_shared<NetConnect>();
-}
-
-int RtpClient::startPushStream(const std::string &callId, std::shared_ptr<CallerParam> rtpParam) {
-    rtp_param_ = rtpParam;
-    call_id_ = callId;
-    LOG_INFO(MSG_LOG, "callId: {} rtpProtocol:{}", callId, rtpParam->rtpProtocol);
-    process_th_ = std::thread(&RtpClient::process, this);
-    return 0;
-}
-
-void RtpClient::close() {
-    is_runing_ = false;
-    if (process_th_.joinable()) {
-        process_th_.join();
-    }
-    if(net_connect_){
-        net_connect_->close();
-    }
-    LOG_INFO(MSG_LOG, "{} RtpClient::close()", device_config_->deviceSipId);
-}
-
-void RtpClient::process() {
-
-    // 初始化网络连接
-    int ret = net_connect_->connect(rtp_param_->localRtpPort, rtp_param_->rtpIp
-                          ,rtp_param_->rtpPort, rtp_param_->rtpProtocol);
-    if(ret < 0){
-        LOG_ERROR(MSG_LOG,"socket connect fail!");
-        return;
-    }
-
-    is_runing_ = true;
+void Mp4ToPsRtpTest::exec(const std::string &videoPath){
     MediaContext *mediaContext = new(std::nothrow) MediaContext();
     if (mediaContext == nullptr) {
         return;
@@ -238,19 +177,18 @@ void RtpClient::process() {
             delete mediaContext;
         }
     });
-
+    is_runing_ = true;
     // ps 格式封装
     struct ps_muxer_func_t handler;
     handler.alloc = ps_alloc;
     handler.write = ps_write;
     handler.free = ps_free;
     mediaContext->ps = ps_muxer_create(&handler, mediaContext);
-    mediaContext->ssrc = rtp_param_->ssrc;
-    mediaContext->net_connect = net_connect_;
-    // 文件读取
+    mediaContext->ssrc = 1000;
+
     struct mov_file_cache_t file;
     memset(&file, 0, sizeof(file));
-    file.fp = fopen(device_config_->filePath.c_str(), "rb");
+    file.fp = fopen(videoPath.c_str(), "rb");
     if(file.fp == nullptr){
         LOG_ERROR(MSG_LOG,"video file open fail!");
         return;
@@ -277,13 +215,6 @@ void RtpClient::process() {
         }
         mov_onread(mediaContext, pkt.track, pkt.ptr, pkt.bytes, pkt.pts, pkt.dts, pkt.flags);
         std::this_thread::sleep_for(std::chrono::milliseconds(40));
-        if(mediaContext->send_packet_error){
-            LOG_ERROR(MSG_LOG,"send rtp packet error.");
-            if(auto delegate = delegate_.lock()){
-                delegate->onNetConnectError(call_id_);
-            }
-            break;
-        }
     }
     if(mov){
         mov_reader_destroy(mov);
@@ -304,5 +235,3 @@ void RtpClient::process() {
         file.fp = nullptr;
     }
 }
-
-NS_END

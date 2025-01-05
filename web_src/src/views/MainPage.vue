@@ -132,8 +132,9 @@ const handleSwitchChange = async (row) => {
         <el-table :data="deviceList" style="width: 100%">
             <el-table-column label="设备ID" width="250" prop="device_sip_id"></el-table-column>
             <el-table-column label="名称" prop="device_name"></el-table-column>
-            <el-table-column label="创建时间" prop="created_at"> </el-table-column>
-            <el-table-column label="端口" prop="local_port"></el-table-column>
+            <el-table-column label="创建时间" width="200" prop="created_at"> </el-table-column>
+            <el-table-column label="端口" width="80" prop="local_port"></el-table-column>
+            <el-table-column label="文件路径" prop="file_path"></el-table-column>
             <el-table-column label="操作" width="120">
                 <template #default="{ row }">
                     <el-switch v-model="row.device_status"
@@ -195,7 +196,7 @@ const handleSwitchChange = async (row) => {
                                :auto-upload="true"
                                :file-list="fileList"
                                :show-file-list="true"
-                               action="/api/file/upload"
+                               action="/baseurl/file/upload"
                                accept=".mp4"
                                name="file"
                                :limit="1"

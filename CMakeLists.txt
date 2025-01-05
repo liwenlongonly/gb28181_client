@@ -2,7 +2,10 @@ cmake_minimum_required (VERSION 3.5)
 
 set(CMAKE_CXX_STANDARD 17)
 
-project(gb28181-client LANGUAGES CXX C)
+#project(gb28181-client LANGUAGES CXX C)
+
+set(PROJECT_NAME gb28181-client)
+set(TEST_PROJECT_NAME gb28181-client-test)
 
 #Determin target architecture
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/TargetArchitecture.cmake)
@@ -37,8 +40,15 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/3rdpart/media-server/libflv/incl
 
 file(GLOB SRCS ${PROJECT_SOURCE_DIR}/src/*.cpp
         ${PROJECT_SOURCE_DIR}/src/*.c
-        ${PROJECT_SOURCE_DIR}/src/common/*.cpp
+)
+
+file(GLOB SRCS_COMMON ${PROJECT_SOURCE_DIR}/src/common/*.cpp
         ${PROJECT_SOURCE_DIR}/src/common/*.c
+)
+
+file(GLOB SRCS_TEST ${PROJECT_SOURCE_DIR}/test/*.cpp
+        ${PROJECT_SOURCE_DIR}/test/*.c
+        ${PROJECT_SOURCE_DIR}/src/global_config.cpp
 )
 
 set(LIB_DIR ${PROJECT_SOURCE_DIR}/lib/linux_lib)
@@ -47,11 +57,19 @@ link_directories(${LIB_DIR})
 set(BIN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/bin/)
 set(EXECUTABLE_OUTPUT_PATH ${BIN_DIR})
 
-add_executable(${PROJECT_NAME} ${SRCS})
+add_executable(${PROJECT_NAME} ${SRCS} ${SRCS_COMMON})
+
+add_executable(${TEST_PROJECT_NAME} ${SRCS_TEST} ${SRCS_COMMON})
+
 target_link_libraries(${PROJECT_NAME} eXosip2 osip2 osipparser2 SQLiteCpp sqlite3
                                  pthread resolv crypto ssl media_server stdc++fs)
 
+target_link_libraries(${TEST_PROJECT_NAME} eXosip2 osip2 osipparser2 SQLiteCpp sqlite3
+        pthread resolv crypto ssl media_server stdc++fs)
+
 set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "-Wl,--disable-new-dtags,-rpath,../linux_lib:./linux_lib")
+
+set_target_properties(${TEST_PROJECT_NAME} PROPERTIES LINK_FLAGS "-Wl,--disable-new-dtags,-rpath,../linux_lib:./linux_lib")
 
 add_subdirectory(./3rdpart/media-server)
 add_subdirectory(./3rdpart/SQLiteCpp)

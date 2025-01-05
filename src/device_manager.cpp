@@ -293,6 +293,7 @@ void DeviceManager::deviceList(const std::string &reqBody,std::string &reply) {
             device.AddMember("local_port",item->localPort, docObj.GetAllocator());
             device.AddMember("device_status",item->deviceStatus == 0? false:true, docObj.GetAllocator());
             device.AddMember("created_at",item->createdAt, docObj.GetAllocator());
+            device.AddMember("file_path",item->filePath, docObj.GetAllocator());
             items.PushBack(device, docObj.GetAllocator());
         }
 

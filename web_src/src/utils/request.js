@@ -4,7 +4,7 @@
 import axios from 'axios';
 import { ElMessage } from 'element-plus'
 //定义一个变量,记录公共的前缀  ,  baseURL
-const baseURL = 'api';
+const baseURL = 'baseurl';
 const instance = axios.create({ baseURL })
 
 //添加响应拦截器
