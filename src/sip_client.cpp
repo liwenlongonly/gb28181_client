@@ -132,12 +132,12 @@ void SipClient::processRequest() {
 
         switch (evt->type) {
             case eXosip_event_type::EXOSIP_REGISTRATION_SUCCESS: {
-                LOG_INFO(SIP_LOG, "recv REGISTRATION_SUCCESS");
+                LOG_INFO(SIP_LOG, "{}---recv REGISTRATION_SUCCESS",device_config_->deviceSipId);
                 is_register_ = true;
                 break;
             }
             case eXosip_event_type::EXOSIP_REGISTRATION_FAILURE: {
-                LOG_INFO(SIP_LOG, "recv REGISTRATION_FAILURE");
+                LOG_INFO(SIP_LOG, "{}---recv REGISTRATION_FAILURE",device_config_->deviceSipId);
                 if (evt->response == nullptr) {
                     LOG_ERROR(SIP_LOG, "register 401 has no response !!!");
                     break;
@@ -153,16 +153,16 @@ void SipClient::processRequest() {
                                                        device_config_->username.c_str(),
                                                        device_config_->password.c_str(),
                                                        "MD5", www_authenticate_header->realm)) {
-                        LOG_ERROR(SIP_LOG, "register add auth failed!");
+                        LOG_ERROR(SIP_LOG, "{}---register add auth failed!",device_config_->deviceSipId);
                         break;
                     }else{
-                        LOG_INFO(SIP_LOG, "register add auth success!");
+                        LOG_INFO(SIP_LOG, "{}---register add auth success!",device_config_->deviceSipId);
                     }
                 }
                 break;
             }
             case eXosip_event_type::EXOSIP_MESSAGE_NEW: {
-                LOG_INFO(SIP_LOG, "recv MESSAGE_NEW");
+                LOG_INFO(SIP_LOG, "{}----recv MESSAGE_NEW",device_config_->deviceSipId);
 
                 if (MSG_IS_MESSAGE(evt->request)) {
                     osip_body_t *body = nullptr;
@@ -176,7 +176,7 @@ void SipClient::processRequest() {
                     auto cmd_sn = this->get_cmd(body->body);
                     std::string cmd = std::get<0>(cmd_sn);
                     std::string sn = std::get<1>(cmd_sn);
-                    LOG_INFO(SIP_LOG, "recv new cmd: {}", cmd);
+                    LOG_INFO(SIP_LOG, "{}---recv new cmd: {}", device_config_->deviceSipId, cmd);
                     if ("Catalog" == cmd) {
                         this->processCatalogQuery(sn);
                     } else if ("DeviceStatus" == cmd) {
@@ -196,7 +196,7 @@ void SipClient::processRequest() {
                 break;
             }
             case eXosip_event_type::EXOSIP_CALL_INVITE: {
-                LOG_INFO(SIP_LOG, "got CALL_INVITE");
+                LOG_INFO(SIP_LOG, "{}---got CALL_INVITE", device_config_->deviceSipId);
 
                 auto sdp_msg = eXosip_get_remote_sdp(sip_context_, evt->did);
                 if (!sdp_msg) {
@@ -220,7 +220,7 @@ void SipClient::processRequest() {
 
                 int rtp_port = atoi(video_sdp->m_port);
 
-                LOG_INFO(SIP_LOG, "rtp server: {}:{}", rtp_ip, rtp_port);
+                LOG_INFO(SIP_LOG, "{}---rtp server: {}:{}",device_config_->deviceSipId ,rtp_ip, rtp_port);
 
                 std::string rtp_protocol = video_sdp->m_proto;
 
