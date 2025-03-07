@@ -127,7 +127,6 @@ int h264_mp4toannexb(const struct mpeg4_avc_t* avc, const void* data, size_t byt
 
 		if (n <= 0 || src + n + avc->nalu > end)
 		{
-			assert(0);
 			return -EINVAL;
 		}
 

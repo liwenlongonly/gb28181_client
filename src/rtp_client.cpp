@@ -130,10 +130,12 @@ static void mov_onread(void *param, uint32_t track, const void *buffer, size_t b
             mediaContext->v_pts = pts;
             mediaContext->v_dts = dts;
 
-            assert(h264_is_new_access_unit((const uint8_t *) buffer + 4, bytes - 4));
+            //assert(h264_is_new_access_unit((const uint8_t *) buffer + 4, bytes - 4));
             int n = h264_mp4toannexb(&mediaContext->s_avc, buffer, bytes, mediaContext->s_packet, sizeof(mediaContext->s_packet));
-            ps_muxer_input(mediaContext->ps, mediaContext->streamId, flags ? 0x01 : 0x00, pts * 90, dts * 90,
-                           mediaContext->s_packet, n);
+            if(n > 0){
+                ps_muxer_input(mediaContext->ps, mediaContext->streamId, flags ? 0x01 : 0x00, pts * 90, dts * 90,
+                               mediaContext->s_packet, n);
+            }
             break;
         }
         case MOV_OBJECT_HEVC: {
@@ -145,10 +147,12 @@ static void mov_onread(void *param, uint32_t track, const void *buffer, size_t b
             mediaContext->v_pts = pts;
             mediaContext->v_dts = dts;
 
-            assert(h265_is_new_access_unit((const uint8_t *) buffer + 4, bytes - 4));
+            //assert(h265_is_new_access_unit((const uint8_t *) buffer + 4, bytes - 4));
             int n = h265_mp4toannexb(&mediaContext->s_hevc, buffer, bytes, mediaContext->s_packet, sizeof(mediaContext->s_packet));
-            ps_muxer_input(mediaContext->ps, mediaContext->streamId, flags ? 0x01 : 0x00, pts * 90, dts * 90,
-                           mediaContext->s_packet, n);
+            if(n > 0){
+                ps_muxer_input(mediaContext->ps, mediaContext->streamId, flags ? 0x01 : 0x00, pts * 90, dts * 90,
+                               mediaContext->s_packet, n);
+            }
             break;
         }
         default:

@@ -8,5 +8,5 @@ int main(int argc, const char* argv[]) {
     // 根据配置文件重新设置log
     ilong::LogHelper::logInit();
     Mp4ToPsRtpTest test;
-    test.exec("./video/file/output.mp4");
+    test.exec("./video/file/1741249256256_新河西岸丰润路口北向南.mp4");
 }
