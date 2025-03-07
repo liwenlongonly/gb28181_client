@@ -9,6 +9,7 @@
 //
 
 #ifndef GB28181_CLIENT_RTP_CLIENT_I_H
+#define GB28181_CLIENT_RTP_CLIENT_I_H
 
 #include "macro_definition.h"
 #include <string>
@@ -19,7 +20,5 @@ public:
     virtual ~RtpConnectDelegate(){}
     virtual void onNetConnectError(const std::string &callID) = 0;
 };
-
-#define GB28181_CLIENT_RTP_CLIENT_I_H
 
 #endif //GB28181_CLIENT_RTP_CLIENT_I_H
