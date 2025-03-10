@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_CXX_COMPILER g++)
 
+set(CMAKE_BUILD_TYPE Release)
+
 message(STATUS "cmake ${PROJECT_NAME_BIZ}")
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -Wall -g -rdynamic -D_DEBUG -DDEBUG=1 ${DEFS}")
