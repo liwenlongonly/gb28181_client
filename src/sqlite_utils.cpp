@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS {} (
    device_name VARCHAR(255) NOT NULL, -- 设备名称
    file_path VARCHAR(255) NOT NULL, -- 文件路径
    device_status INTEGER DEFAULT 0, -- 设备状态，0-未启动，1-启动
-   created_at DATETIME DEFAULT (datetime('now'))
+   created_at DATETIME DEFAULT (datetime('now', 'localtime'))
 );
 )";
 

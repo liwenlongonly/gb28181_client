@@ -272,7 +272,6 @@ void RtpClient::process() {
         int r = mov_reader_read2(mov, onalloc, &pkt);
         if (r == 0)
         {
-            LOG_INFO(MSG_LOG,"视频播放完成后重新开始");
             int64_t ts{0};
             mov_reader_seek(mov, &ts);
             continue;
