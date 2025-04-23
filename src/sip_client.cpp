@@ -96,6 +96,21 @@ void SipClient::close() {
     }
     if(sip_context_){
         eXosip_lock(sip_context_);
+        // 1. 创建注销请求
+        osip_message_t *unreg = nullptr;
+        int ret = eXosip_register_build_register(sip_context_, register_id_, 0, &unreg); // 0 表示 Expires 为 0，即注销
+        if (ret != 0) {
+            LOG_ERROR(SIP_LOG, "failed to build unregister request");
+        }
+        // 2. 设置必要的头部（可选）
+        // osip_message_set_header(unreg, "User-Agent", "MyCamera/1.0");
+        // 3. 发送注销请求
+        ret = eXosip_register_send_register(sip_context_, register_id_, unreg);
+        if (ret != 0) {
+            LOG_ERROR(SIP_LOG,"failed to send unregister request.");
+        } else {
+            LOG_INFO(SIP_LOG,"unregister request sent success.");
+        }
         eXosip_register_remove(sip_context_, register_id_);
         eXosip_unlock(sip_context_);
 
