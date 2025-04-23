@@ -149,7 +149,7 @@ void NetConnect::close() {
    |             LENGTH            |  RTP or RTCP packet ...       |
     ---------------------------------------------------------------
  * */
-
+const int rtpHeaderLen = 2;
 int NetConnect::sendPacket(const char *data, int length) {
     int ret{0};
     if (rtp_protocol_ == "TCP/RTP/AVP") {
@@ -157,10 +157,10 @@ int NetConnect::sendPacket(const char *data, int length) {
             return -2;
         }
         // rtp 封装的时候rtp_buffer多分配了4个字节
-        uint8_t * rtpPacket = ((uint8_t*)data) - 2;
+        uint8_t * rtpPacket = ((uint8_t*)data) - rtpHeaderLen;
         rtpPacket[0] = (length >> 8) & 0xff;
         rtpPacket[1] = length & 0xff;
-        ret = ::send(sock_fd_, rtpPacket, length + 2, 0);
+        ret = ::send(sock_fd_, rtpPacket, length + rtpHeaderLen, 0);
         if (ret <= 0) {
             return -1;
         }

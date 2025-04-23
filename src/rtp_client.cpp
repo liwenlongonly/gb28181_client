@@ -34,6 +34,7 @@ struct MediaContext {
     struct mpeg4_avc_t s_avc;
 
     uint8_t ps_buffer[BUFFER_SIZE] = {0};
+    // 多分配4个字节 rtp over tcp 时使用
     uint8_t rtp_buffer[BUFFER_SIZE+4] = {0};
 
     int64_t v_pts, v_dts;
