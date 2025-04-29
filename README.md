@@ -1,6 +1,6 @@
 # gb28181_client
 
-国标 gb28181 模拟客户端平台支持多设备, web端使用Vue + element-plus
+国标 gb28181 模拟客户端平台,支持将mp4视频文件虚拟为GB28181设备,B/S架构,web端使用Vue + element-plus
 
 - 支持 Linux
 
@@ -35,7 +35,7 @@ npm install
 npm run build
 ```
 
-## web端部署nginx使用做代理
+## web端部署使用nginx做代理
 ```
 server {
     listen       9088;

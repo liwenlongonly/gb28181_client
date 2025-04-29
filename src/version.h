@@ -7,6 +7,6 @@
 
 #define DA_MAJOR_VERSION 1
 #define DA_MINOR_VERSION 0
-#define DA_PATCH_VERSION 0
+#define DA_PATCH_VERSION 4
 
 #endif //DASERVER_VERSION_H

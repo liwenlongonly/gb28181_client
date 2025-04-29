@@ -6,3 +6,6 @@ echo "${target_name} ${target_version} ${install_dir}"
 cd ${install_dir}
 mv ${target_name} "${target_name}_${target_version}"
 ln -srf "${target_name}_${target_version}" ${target_name}
+chmod +x ../config.sh
+chmod +x ../keepalive.sh
+chmod +x ../process_manager.sh
