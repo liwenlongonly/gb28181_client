@@ -2,6 +2,8 @@ cmake_minimum_required (VERSION 3.5)
 
 set(CMAKE_CXX_STANDARD 17)
 
+project(gb28181)
+
 set(PROJECT_NAME gb28181-client)
 set(TEST_PROJECT_NAME gb28181-client-test)
 
