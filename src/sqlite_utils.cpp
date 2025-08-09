@@ -137,7 +137,7 @@ DeviceVec SQLiteUtils::queryDevice(int pageSize, int pageNum) {
             deviceCfg->deviceSipId= query.getColumn(4).getString();
             deviceCfg->localPort = query.getColumn(5).getInt();
             deviceCfg->username = query.getColumn(6).getString();
-            deviceCfg->username = query.getColumn(7).getString();
+            deviceCfg->password = query.getColumn(7).getString();
             deviceCfg->manufacture = query.getColumn(8).getString();
             deviceCfg->deviceName = query.getColumn(9).getString();
             deviceCfg->filePath = query.getColumn(10).getString();
@@ -149,7 +149,7 @@ DeviceVec SQLiteUtils::queryDevice(int pageSize, int pageNum) {
         LOG_ERROR(SQL_LOG,"SQLite exception: {}", e.what());
         return {};
     }
-    return std::move(deviceVec);
+    return deviceVec;
 }
 
 DeviceVec SQLiteUtils::queryAllDevice(){
@@ -182,7 +182,7 @@ DeviceVec SQLiteUtils::queryAllDevice(){
         LOG_ERROR(SQL_LOG,"SQLite exception: {}", e.what());
         return {};
     }
-    return std::move(deviceVec);
+    return deviceVec;
 }
 
 int SQLiteUtils::getDeviceTotalCount() {

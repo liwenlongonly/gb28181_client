@@ -34,11 +34,10 @@ public:
     virtual int start() override;
     virtual void close() override;
 
-public:
+private:
     virtual int onAllocRtpPort() override;
     virtual void onStartPushStream(const std::string &callId, std::shared_ptr<CallerParam> param) override;
     virtual void onStopPushStream(const std::string &callId) override;
-
     virtual void onNetConnectError(const std::string &callID) override;
 
 private:
