@@ -199,7 +199,11 @@ void SipClient::processRequest() {
                     } else if ("DeviceInfo" == cmd) {
                         this->processDeviceInfoQuery(sn);
                     } else if ("DeviceControl" == cmd) {
-                        this->processDeviceControlQuery(sn);
+                        this->processDeviceControlQuery(sn, body->body);
+                    } else if ("RecordInfo" == cmd) {
+                        this->processRecordInfoQuery(sn);
+                    } else if ("PlayBackControl" == cmd) {
+                        this->processPlaybackControlQuery(sn, body->body);
                     } else {
                         LOG_ERROR(SIP_LOG, "unhandled cmd: {}", cmd);
                     }
@@ -254,6 +258,32 @@ void SipClient::processRequest() {
                 }
 
                 std::string body = sdp_body->body;
+
+                // 解析 SDP 中的 session name (s= 字段)
+                std::string sessionName = "Play";
+                auto s_index = body.find("s=");
+                if (s_index != std::string::npos) {
+                    auto s_line = body.substr(s_index + 2);
+                    auto s_end = s_line.find("\r\n");
+                    if (s_end != std::string::npos) {
+                        sessionName = s_line.substr(0, s_end);
+                    }
+                }
+                LOG_INFO(SIP_LOG, "session name: {}", sessionName);
+
+                // 回放模式下，解析时间范围 (t= 字段)
+                if ("Playback" == sessionName) {
+                    auto t_index = body.find("t=");
+                    if (t_index != std::string::npos) {
+                        auto t_line = body.substr(t_index + 2);
+                        auto t_end = t_line.find("\r\n");
+                        if (t_end != std::string::npos) {
+                            std::string timeRange = t_line.substr(0, t_end);
+                            LOG_INFO(SIP_LOG, "playback time range: {}", timeRange);
+                        }
+                    }
+                }
+
                 auto y_sdp_first_index = body.find("y=");
                 auto y_sdp = body.substr(y_sdp_first_index);
                 auto y_sdp_last_index = y_sdp.find("\r\n");
@@ -263,12 +293,12 @@ void SipClient::processRequest() {
 
                 caller_param_ = std::make_shared<CallerParam>(rtp_ip, rtp_port,
                                                             rtp_protocol, result,
-                                                            localRtpPort);
+                                                            localRtpPort, sessionName);
 
                 std::stringstream ss;
                 ss << "v=0\r\n";
                 ss << "o=" << device_config_->deviceSipId << " 0 0 IN IP4 " << local_ip_ << "\r\n";
-                ss << "s=Play\r\n";
+                ss << "s=" << sessionName << "\r\n";
                 ss << "c=IN IP4 " << local_ip_ << "\r\n";
                 ss << "t=0 0\r\n";
                 if (rtp_protocol == "TCP/RTP/AVP") {
@@ -297,7 +327,8 @@ void SipClient::processRequest() {
                 break;
             }
             case eXosip_event_type::EXOSIP_CALL_ACK: {
-                LOG_INFO(SIP_LOG, "EXOSIP_CALL_ACK tag:{}--{} begin pushing rtp stream...", from_sip_, callID);
+                std::string sessionType = caller_param_ ? caller_param_->sessionName : "Unknown";
+                LOG_INFO(SIP_LOG, "EXOSIP_CALL_ACK tag:{}--{} session:{} begin pushing rtp stream...", from_sip_, callID, sessionType);
                 auto delegate = stream_event_monitor_.lock();
                 if(caller_param_ && delegate){
                     delegate->onStartPushStream(callID, caller_param_);
@@ -419,8 +450,154 @@ void SipClient::processDeviceInfoQuery(std::string sn) {
     }
 }
 
-void SipClient::processDeviceControlQuery(std::string sn) {
+void SipClient::processDeviceControlQuery(std::string sn, const std::string &body) {
+    // 解析控制命令类型
+    pugi::xml_document document;
+    if (!document.load_string(body.c_str())) {
+        LOG_ERROR(SIP_LOG, "processDeviceControlQuery: cannot parse xml body");
+        return;
+    }
 
+    pugi::xml_node root_node = document.first_child();
+    if (!root_node) {
+        LOG_ERROR(SIP_LOG, "processDeviceControlQuery: cannot get root node");
+        return;
+    }
+
+    // 识别具体的设备控制命令
+    std::string controlCmd;
+    if (root_node.child("PTZCmd")) {
+        controlCmd = "PTZCmd";
+        std::string ptzCmd = root_node.child_value("PTZCmd");
+        LOG_INFO(SIP_LOG, "DeviceControl PTZCmd: {}", ptzCmd);
+    } else if (root_node.child("TeleBoot")) {
+        controlCmd = "TeleBoot";
+        LOG_INFO(SIP_LOG, "DeviceControl TeleBoot: {}", root_node.child_value("TeleBoot"));
+    } else if (root_node.child("RecordCmd")) {
+        controlCmd = "RecordCmd";
+        LOG_INFO(SIP_LOG, "DeviceControl RecordCmd: {}", root_node.child_value("RecordCmd"));
+    } else if (root_node.child("GuardCmd")) {
+        controlCmd = "GuardCmd";
+        LOG_INFO(SIP_LOG, "DeviceControl GuardCmd: {}", root_node.child_value("GuardCmd"));
+    } else if (root_node.child("AlarmCmd")) {
+        controlCmd = "AlarmCmd";
+        LOG_INFO(SIP_LOG, "DeviceControl AlarmCmd: {}", root_node.child_value("AlarmCmd"));
+    } else if (root_node.child("IFameCmd")) {
+        controlCmd = "IFameCmd";
+        LOG_INFO(SIP_LOG, "DeviceControl IFameCmd: {}", root_node.child_value("IFameCmd"));
+    } else {
+        controlCmd = "Unknown";
+        LOG_WARN(SIP_LOG, "DeviceControl: unrecognized control command");
+    }
+
+    // 构建 DeviceControl 响应
+    std::stringstream ss;
+    ss << "<?xml version=\"1.0\" encoding=\"GB2312\"?>\r\n";
+    ss << "<Response>\r\n";
+    ss << "<CmdType>DeviceControl</CmdType>\r\n";
+    ss << "<SN>" << sn << "</SN>\r\n";
+    ss << "<DeviceID>" << device_config_->deviceSipId << "</DeviceID>\r\n";
+    ss << "<Result>OK</Result>\r\n";
+    ss << "</Response>\r\n";
+
+    LOG_INFO(SIP_LOG, "DeviceControl response: \n{}", ss.str());
+    auto request = createMsg();
+    if (request != NULL) {
+        osip_message_set_content_type(request, "Application/MANSCDP+xml");
+        osip_message_set_body(request, ss.str().c_str(), strlen(ss.str().c_str()));
+        sendRequest(request);
+    }
+}
+
+void SipClient::processRecordInfoQuery(std::string sn) {
+    std::stringstream ss;
+    ss << "<?xml version=\"1.0\" encoding=\"GB2312\"?>\r\n";
+    ss << "<Response>\r\n";
+    ss << "<CmdType>RecordInfo</CmdType>\r\n";
+    ss << "<SN>" << sn << "</SN>\r\n";
+    ss << "<DeviceID>" << device_config_->deviceSipId << "</DeviceID>\r\n";
+    ss << "<SumNum>" << 1 << "</SumNum>\r\n";
+    ss << "<RecordList Num=\"" << 1 << "\">\r\n";
+    ss << "<Item>\r\n";
+    ss << "<DeviceID>" << device_config_->deviceSipId << "</DeviceID>\r\n";
+    ss << "<Name>record1</Name>\r\n";
+    ss << "<StartTime>" << device_config_->recordStartTime << "</StartTime>\r\n";
+    ss << "<EndTime>" << device_config_->recordEndTime << "</EndTime>\r\n";
+    ss << "<Secrecy>0</Secrecy>\r\n";
+    ss << "<Type>time</Type>\r\n";
+    ss << "<FileSize>0</FileSize>\r\n";
+    ss << "</Item>\r\n";
+    ss << "</RecordList>\r\n";
+    ss << "</Response>\r\n";
+
+    LOG_INFO(SIP_LOG, "RecordInfo response: \n{}", ss.str());
+    auto request = createMsg();
+    if (request != nullptr) {
+        osip_message_set_content_type(request, "Application/MANSCDP+xml");
+        osip_message_set_body(request, ss.str().c_str(), strlen(ss.str().c_str()));
+        sendRequest(request);
+    }
+}
+
+void SipClient::processPlaybackControlQuery(std::string sn, const std::string &body) {
+    // 解析回放控制 XML
+    pugi::xml_document document;
+    if (!document.load_string(body.c_str())) {
+        LOG_ERROR(SIP_LOG, "processPlaybackControlQuery: cannot parse xml body");
+        return;
+    }
+
+    pugi::xml_node root_node = document.first_child();
+    if (!root_node) {
+        LOG_ERROR(SIP_LOG, "processPlaybackControlQuery: cannot get root node");
+        return;
+    }
+
+    // 识别回放控制动作
+    std::string action;
+    if (root_node.child("Play")) {
+        action = "Play";
+        LOG_INFO(SIP_LOG, "PlaybackControl: Play (resume)");
+    } else if (root_node.child("Pause")) {
+        action = "Pause";
+        LOG_INFO(SIP_LOG, "PlaybackControl: Pause");
+    } else if (root_node.child("Stop")) {
+        action = "Stop";
+        LOG_INFO(SIP_LOG, "PlaybackControl: Stop");
+    } else if (root_node.child("PlaySeek")) {
+        action = "PlaySeek";
+        std::string seekTime = root_node.child_value("PlaySeek");
+        LOG_INFO(SIP_LOG, "PlaybackControl: PlaySeek to {}", seekTime);
+    } else if (root_node.child("PlaySpeed")) {
+        action = "PlaySpeed";
+        std::string speed = root_node.child_value("PlaySpeed");
+        LOG_INFO(SIP_LOG, "PlaybackControl: PlaySpeed x{}", speed);
+    } else if (root_node.child("PlayRewind")) {
+        action = "PlayRewind";
+        std::string speed = root_node.child_value("PlayRewind");
+        LOG_INFO(SIP_LOG, "PlaybackControl: PlayRewind x{}", speed);
+    } else {
+        action = "Unknown";
+        LOG_WARN(SIP_LOG, "PlaybackControl: unrecognized control action");
+    }
+
+    // 构建 PlayBackControl 响应
+    std::stringstream ss;
+    ss << "<?xml version=\"1.0\" encoding=\"GB2312\"?>\r\n";
+    ss << "<Response>\r\n";
+    ss << "<CmdType>PlayBackControl</CmdType>\r\n";
+    ss << "<SN>" << sn << "</SN>\r\n";
+    ss << "<DeviceID>" << device_config_->deviceSipId << "</DeviceID>\r\n";
+    ss << "<Result>OK</Result>\r\n";
+    ss << "</Response>\r\n";
+
+    LOG_INFO(SIP_LOG, "PlaybackControl response: \n{}", ss.str());
+    auto request = createMsg();
+    if (request != nullptr) {
+        osip_message_set_content_type(request, "Application/MANSCDP+xml");
+        osip_message_set_body(request, ss.str().c_str(), strlen(ss.str().c_str()));
+        sendRequest(request);
+    }
 }
 
 int SipClient::get_sn() {
@@ -503,7 +680,7 @@ std::tuple<std::string, std::string> SipClient::get_cmd(const char *body) {
     }
 
     std::string root_name = root_node.name();
-    if ("Query" != root_name) {
+    if ("Query" != root_name && "Control" != root_name) {
         LOG_ERROR(SIP_LOG, "invalid query xml with root: {}", root_name);
         return std::make_tuple("", "");
     }

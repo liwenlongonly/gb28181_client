@@ -39,8 +39,12 @@ public:
     void deviceStop(const std::string &reqBody,std::string &reply);
     // 设备删除
     void deviceDelete(const std::string &reqBody,std::string &reply);
-    // 获取设备列表
+    // 设备修改（仅关闭状态可修改）
+    void deviceUpdate(const std::string &reqBody,std::string &reply);
+    // 获取设备列表（支持按设备ID搜索）
     void deviceList(const std::string &reqBody, std::string &reply);
+    // 根据设备SIP ID获取视频文件路径
+    std::string getDeviceFilePath(const std::string &deviceSipId);
 private:
     friend Singleton<DeviceManager>;
 

@@ -193,6 +193,119 @@ void DeviceManager::deviceDelete(const std::string &reqBody,std::string &reply) 
     }
 }
 
+void DeviceManager::deviceUpdate(const std::string &reqBody,std::string &reply) {
+    Document dc;
+    try {
+        Rjson::Parse(dc, reqBody);
+
+        std::string device_sip_id;
+        if(!Rjson::GetStringV(device_sip_id,"device_sip_id", &dc)){
+            return reply_error(reply, ERROR_MISS_PARAM, "miss param : device_sip_id");
+        }
+
+        if(!isInMap(device_sip_id)){
+            return reply_error(reply, ERROR_DEVICE_NOT_FOUND);
+        }
+
+        // 检查设备是否处于运行状态，运行中不允许修改
+        auto deviceMap = getDeviceMap();
+        auto iter = deviceMap->find(device_sip_id);
+        if(iter == deviceMap->end()){
+            return reply_error(reply, ERROR_DEVICE_NOT_FOUND);
+        }
+        auto device = iter->second;
+        auto oldConfig = device->getConfig();
+        if(oldConfig->deviceStatus == 1){
+            return reply_error(reply, ERROR_INVALID_PARAM, "设备运行中，请先关闭设备再修改");
+        }
+
+        // 解析各字段
+        std::string server_sip_id;
+        if(!Rjson::GetStringV(server_sip_id,"server_sip_id", &dc)){
+            return reply_error(reply, ERROR_MISS_PARAM, "miss param : server_sip_id");
+        }
+
+        std::string server_ip;
+        if(!Rjson::GetStringV(server_ip,"server_ip", &dc)){
+            return reply_error(reply, ERROR_MISS_PARAM, "miss param : server_ip");
+        }
+
+        int server_port;
+        if(!Rjson::GetIntV(server_port,"server_port", &dc)){
+            return reply_error(reply, ERROR_MISS_PARAM, "miss param : server_port");
+        }
+
+        int local_port;
+        if(!Rjson::GetIntV(local_port, "local_port", &dc)){
+            return reply_error(reply, ERROR_MISS_PARAM, "miss param : local_port");
+        }
+
+        std::string username;
+        if(!Rjson::GetStringV(username, "username", &dc)){
+            return reply_error(reply, ERROR_MISS_PARAM, "miss param : username");
+        }
+
+        std::string password;
+        if(!Rjson::GetStringV(password, "password", &dc)){
+            return reply_error(reply, ERROR_MISS_PARAM, "miss param : password");
+        }
+
+        std::string manufacture;
+        Rjson::GetStringV(manufacture, "manufacture", &dc);
+        if(manufacture.empty()){
+            manufacture = "iLong";
+        }
+
+        std::string device_name;
+        if(!Rjson::GetStringV(device_name,"device_name", &dc)){
+            return reply_error(reply, ERROR_MISS_PARAM, "miss param : device_name");
+        }
+
+        std::string file_path;
+        if(!Rjson::GetStringV(file_path,"file_path", &dc)){
+            return reply_error(reply, ERROR_MISS_PARAM, "miss param : file_path");
+        }
+
+        if(!isFileExist(file_path)){
+            return reply_error(reply, ERROR_FILE_NOT_FOUND);
+        }
+
+        // 构建新的配置
+        auto newConfig = std::make_shared<DeviceConfig>();
+        newConfig->serverSipId = server_sip_id;
+        newConfig->serverIp = server_ip;
+        newConfig->serverPort = server_port;
+        newConfig->deviceSipId = device_sip_id;
+        newConfig->localPort = local_port;
+        newConfig->username = username;
+        newConfig->password = password;
+        newConfig->manufacture = manufacture;
+        newConfig->filePath = file_path;
+        newConfig->deviceName = device_name;
+        newConfig->deviceStatus = 0;
+
+        // 更新数据库
+        if(sqlite_utils_){
+            bool ret = sqlite_utils_->updateDeviceInfo(newConfig);
+            if(!ret){
+                return reply_error(reply, ERROR_EXEC_DATA_BASE);
+            }
+        }
+
+        // 重新初始化设备对象
+        device->init(newConfig);
+
+        return reply_error(reply, ERROR_OK);
+    }
+    catch (GeneralException2& e) {
+        std::string err_str = fmt::format("error:{}, {}", e.err_code(), e.err_str());
+        return reply_error(reply, ERROR_INVALID_PARAM, err_str);
+    }
+    catch (std::exception& e) {
+        return reply_error(reply, ERROR_INVALID_PARAM, e.what());
+    }
+}
+
 void DeviceManager::deviceStart(const std::string &reqBody,std::string &reply) {
     Document dc;
     try {
@@ -272,8 +385,21 @@ void DeviceManager::deviceList(const std::string &reqBody,std::string &reply) {
         if(!Rjson::GetIntV(page_num,"page_num", &dc)){
             return reply_error(reply, ERROR_MISS_PARAM, "miss param : page_num");
         }
-        auto deviceVec = sqlite_utils_->queryDevice(page_size, page_num);
-        int total = sqlite_utils_->getDeviceTotalCount();
+
+        // 可选的设备ID搜索
+        std::string device_sip_id;
+        Rjson::GetStringV(device_sip_id, "device_sip_id", &dc);
+
+        DeviceVec deviceVec;
+        int total;
+        if (!device_sip_id.empty()) {
+            deviceVec = sqlite_utils_->searchDevice(device_sip_id, page_size, page_num);
+            total = sqlite_utils_->searchDeviceCount(device_sip_id);
+        } else {
+            deviceVec = sqlite_utils_->queryDevice(page_size, page_num);
+            total = sqlite_utils_->getDeviceTotalCount();
+        }
+
         Document docObj;
         docObj.SetObject();
         docObj.AddMember("code", 0, docObj.GetAllocator());
@@ -313,6 +439,15 @@ void DeviceManager::deviceList(const std::string &reqBody,std::string &reply) {
     catch (std::exception& e) {
         return reply_error(reply, ERROR_INVALID_PARAM, e.what());
     }
+}
+
+std::string DeviceManager::getDeviceFilePath(const std::string &deviceSipId) {
+    auto deviceMap = getDeviceMap();
+    auto iter = deviceMap->find(deviceSipId);
+    if (iter != deviceMap->end()) {
+        return iter->second->getConfig()->filePath;
+    }
+    return "";
 }
 
 // private

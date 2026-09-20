@@ -119,6 +119,34 @@ bool SQLiteUtils::modifyDeviceStatus(const std::string &deviceSipId, const int d
     return true;
 }
 
+bool SQLiteUtils::updateDeviceInfo(std::shared_ptr<DeviceConfig> cfg) {
+    std::string exeStr = "UPDATE {} SET "
+                         "server_sip_id = '{}', "
+                         "server_ip = '{}', "
+                         "server_port = {}, "
+                         "local_port = {}, "
+                         "username = '{}', "
+                         "password = '{}', "
+                         "manufacture = '{}', "
+                         "device_name = '{}', "
+                         "file_path = '{}' "
+                         "WHERE device_sip_id = '{}';";
+    std::string sqlStr = fmt::format(exeStr, table_name_,
+                                     cfg->serverSipId, cfg->serverIp, cfg->serverPort,
+                                     cfg->localPort, cfg->username, cfg->password,
+                                     cfg->manufacture, cfg->deviceName, cfg->filePath,
+                                     cfg->deviceSipId);
+    LOG_INFO(SQL_LOG, "update sql: {}", sqlStr);
+    try {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        sqlite_db_->exec(sqlStr);
+    } catch (const std::exception& e) {
+        LOG_ERROR(SQL_LOG, "SQLite exception: {}", e.what());
+        return false;
+    }
+    return true;
+}
+
 DeviceVec SQLiteUtils::queryDevice(int pageSize, int pageNum) {
     std::string exeStr{
         "SELECT * FROM {} ORDER BY created_at DESC LIMIT {} OFFSET {};"
@@ -150,6 +178,56 @@ DeviceVec SQLiteUtils::queryDevice(int pageSize, int pageNum) {
         return {};
     }
     return deviceVec;
+}
+
+DeviceVec SQLiteUtils::searchDevice(const std::string &deviceSipId, int pageSize, int pageNum) {
+    std::string exeStr{
+        "SELECT * FROM {} WHERE device_sip_id LIKE '%{}%' ORDER BY created_at DESC LIMIT {} OFFSET {};"
+    };
+    std::string sqlStr = fmt::format(exeStr, table_name_, deviceSipId, pageSize, (pageNum - 1) * pageSize);
+    LOG_INFO(SQL_LOG, "search sql: {}", sqlStr);
+    DeviceVec deviceVec;
+    try {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        SQLite::Statement query(*sqlite_db_, sqlStr);
+        while(query.executeStep()) {
+            auto deviceCfg = std::make_shared<DeviceConfig>();
+            deviceCfg->serverSipId = query.getColumn(1).getString();
+            deviceCfg->serverIp = query.getColumn(2).getString();
+            deviceCfg->serverPort = query.getColumn(3).getInt();
+            deviceCfg->deviceSipId= query.getColumn(4).getString();
+            deviceCfg->localPort = query.getColumn(5).getInt();
+            deviceCfg->username = query.getColumn(6).getString();
+            deviceCfg->password = query.getColumn(7).getString();
+            deviceCfg->manufacture = query.getColumn(8).getString();
+            deviceCfg->deviceName = query.getColumn(9).getString();
+            deviceCfg->filePath = query.getColumn(10).getString();
+            deviceCfg->deviceStatus = query.getColumn(11).getInt();
+            deviceCfg->createdAt = query.getColumn(12).getString();
+            deviceVec.push_back(deviceCfg);
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(SQL_LOG, "SQLite exception: {}", e.what());
+        return {};
+    }
+    return deviceVec;
+}
+
+int SQLiteUtils::searchDeviceCount(const std::string &deviceSipId) {
+    std::string exeStr = "SELECT COUNT(*) FROM {} WHERE device_sip_id LIKE '%{}%';";
+    std::string sqlStr = fmt::format(exeStr, table_name_, deviceSipId);
+    int count{};
+    try {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        SQLite::Statement query(*sqlite_db_, sqlStr);
+        if (query.executeStep()) {
+            count = query.getColumn(0).getInt();
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR(SQL_LOG, "SQLite exception: {}", e.what());
+        return count;
+    }
+    return count;
 }
 
 DeviceVec SQLiteUtils::queryAllDevice(){

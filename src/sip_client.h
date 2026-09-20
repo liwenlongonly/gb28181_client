@@ -20,17 +20,21 @@ public:
                 const int rtpPort,
                 const std::string &rtpProtocol,
                 const uint32_t &ssrc,
-                const int localRtpPort):rtpIp{rtpIp},
+                const int localRtpPort,
+                const std::string &sessionName = "Play"):rtpIp{rtpIp},
                 rtpPort{rtpPort},
                 rtpProtocol{rtpProtocol},
                 ssrc{ssrc},
-                localRtpPort{localRtpPort}{
+                localRtpPort{localRtpPort},
+                sessionName{sessionName}{
     }
     std::string rtpIp;
     int localRtpPort{};
     int rtpPort{};
     std::string rtpProtocol;
     uint32_t ssrc;
+    // 会话名称: "Play" 实时点播, "Playback" 回放
+    std::string sessionName;
 };
 
 class SipClient {
@@ -51,7 +55,11 @@ private:
 
     void processDeviceStatusQuery(std::string sn);
 
-    void processDeviceControlQuery(std::string sn);
+    void processDeviceControlQuery(std::string sn, const std::string &body);
+
+    void processRecordInfoQuery(std::string sn);
+
+    void processPlaybackControlQuery(std::string sn, const std::string &body);
 
     void heartbeatTask();
 

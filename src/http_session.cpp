@@ -3,6 +3,9 @@
 #include "httplib.h"
 #include "device_manager.h"
 #include "global_config.h"
+#include "file_utils.h"
+
+#include <fstream>
 
 using namespace rapidjson;
 
@@ -92,6 +95,13 @@ void HttpSession::init() {
         res.set_content(reply, "application/json");
     });
 
+    // 修改GB28181设备接口（仅关闭状态可修改）
+    http_server_->Post("/gb28181/v1/device/update", [deviceManager](const httplib::Request &req, httplib::Response &res) {
+        std::string reply;
+        deviceManager->deviceUpdate(req.body, reply);
+        res.set_content(reply, "application/json");
+    });
+
     // 视频文件上传接口
     http_server_->Post("/gb28181/v1/file/upload", [config](const httplib::Request &req, httplib::Response &res, const httplib::ContentReader &content_reader) {
         if (req.is_multipart_form_data()) {
@@ -137,11 +147,61 @@ void HttpSession::init() {
         }
     });
 
-    // 获取虚拟设备列表 分页
+    // 获取虚拟设备列表 分页（支持按 device_sip_id 搜索）
     http_server_->Post("/gb28181/v1/device/list", [deviceManager](const httplib::Request &req, httplib::Response &res) {
         std::string reply;
         deviceManager->deviceList(req.body, reply);
         res.set_content(reply, "application/json");
+    });
+
+    // 视频文件流播放（根据设备ID获取对应的视频文件）
+    http_server_->Get("/gb28181/v1/device/video", [deviceManager](const httplib::Request &req, httplib::Response &res) {
+        auto it = req.params.find("device_sip_id");
+        if (it == req.params.end()) {
+            res.status = 400;
+            res.set_content(R"({"code":-4,"msg":"miss param: device_sip_id"})", "application/json");
+            return;
+        }
+        std::string deviceSipId = it->second;
+        std::string filePath = deviceManager->getDeviceFilePath(deviceSipId);
+        if (filePath.empty() || !isFileExist(filePath)) {
+            res.status = 404;
+            res.set_content(R"({"code":-13,"msg":"video file not found"})", "application/json");
+            return;
+        }
+
+        // 获取文件大小
+        std::ifstream ifs(filePath, std::ios::binary | std::ios::ate);
+        if (!ifs.is_open()) {
+            res.status = 500;
+            res.set_content(R"({"code":-6,"msg":"cannot open video file"})", "application/json");
+            return;
+        }
+        size_t fileSize = static_cast<size_t>(ifs.tellg());
+        ifs.close();
+
+        // 使用 content_provider 流式传输，支持 Range 请求（视频拖拽）
+        res.set_content_provider(
+            fileSize, "video/mp4",
+            [filePath](size_t offset, size_t length, httplib::DataSink &sink) {
+                std::ifstream file(filePath, std::ios::binary);
+                if (!file.is_open()) {
+                    return false;
+                }
+                file.seekg(static_cast<std::streamoff>(offset));
+                constexpr size_t BUF_SIZE = 64 * 1024;
+                char buf[BUF_SIZE];
+                size_t remaining = length;
+                while (remaining > 0) {
+                    size_t toRead = std::min(remaining, BUF_SIZE);
+                    file.read(buf, static_cast<std::streamsize>(toRead));
+                    auto bytesRead = static_cast<size_t>(file.gcount());
+                    if (bytesRead == 0) break;
+                    if (!sink.write(buf, bytesRead)) return false;
+                    remaining -= bytesRead;
+                }
+                return true;
+            });
     });
 }
 

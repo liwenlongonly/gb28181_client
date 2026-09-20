@@ -27,6 +27,9 @@ public:
     std::string filePath;
     int deviceStatus{0};
     std::string createdAt; // 创建时间，用来返回数据用
+    // 录像时间段，用于 RecordInfo 响应
+    std::string recordStartTime{"2024-01-01T00:00:00"};
+    std::string recordEndTime{"2024-01-01T23:59:59"};
 };
 
 NS_END

@@ -45,11 +45,37 @@ export const deviceDeleteService = (sip)=>{
     return request.post('/device/delete', jsonParams);
 }
 
-// 设备列表的接口的函数
+// 设备修改的接口的函数（仅关闭状态可修改）
+export const deviceUpdateService = (params)=>{
+    const jsonParams = {
+        "server_sip_id":params.serverSipId,
+        "server_ip":params.serverIp,
+        "server_port":parseInt(params.serverPort),
+        "device_sip_id":params.deviceSipId,
+        "local_port": parseInt(params.localPort),
+        "username":params.username,
+        "password":params.password,
+        "manufacture":'',
+        "device_name":params.deviceName,
+        "file_path":params.filePath
+    };
+    return request.post('/device/update', jsonParams);
+}
+
+// 设备列表的接口的函数（支持按设备ID搜索）
 export const deviceListService = (params)=>{
     const jsonParams = {
         "page_size":params.pageSize,
         "page_num":params.pageNum
     };
+    // 可选的设备ID搜索
+    if(params.deviceSipId){
+        jsonParams["device_sip_id"] = params.deviceSipId;
+    }
     return request.post('/device/list', jsonParams);
+}
+
+// 获取设备视频流URL
+export const getVideoUrl = (deviceSipId)=>{
+    return `/baseurl/device/video?device_sip_id=${encodeURIComponent(deviceSipId)}`;
 }
