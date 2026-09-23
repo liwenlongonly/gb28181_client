@@ -90,6 +90,19 @@ void GB28181Device::onNetConnectError(const std::string &callID) {
     }).detach();
 }
 
+void GB28181Device::onPlaybackComplete(const std::string &callId, int dialogId) {
+    LOG_INFO(MSG_LOG, "{} playback complete, callId: {}, did: {}", device_config_->deviceSipId, callId, dialogId);
+    // 在独立线程中清理并发送 BYE，避免阻塞推流线程
+    std::thread([this, callId, dialogId] {
+        // 1. 关闭并移除 RtpClient
+        this->onStopPushStream(callId);
+        // 2. 发送 BYE 终止 SIP 会话
+        if (sip_client_ && dialogId >= 0) {
+            sip_client_->sendBye(dialogId);
+        }
+    }).detach();
+}
+
 std::shared_ptr<DeviceConfig> GB28181Device::getConfig() {
         return device_config_;
 }

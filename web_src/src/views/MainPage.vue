@@ -18,6 +18,7 @@ const pageSize = ref(5)//每页条数
 
 //搜索条件
 const searchDeviceId = ref('')
+const searchDeviceStatus = ref(-1) // -1=全部, 0=关闭, 1=开启
 
 //当每页条数发生了变化，调用此函数
 const onSizeChange = (size) => {
@@ -46,7 +47,8 @@ const queryDeviceList = async () => {
   let params = {
     pageNum: pageNum.value,
     pageSize: pageSize.value,
-    deviceSipId: searchDeviceId.value || undefined
+    deviceSipId: searchDeviceId.value || undefined,
+    deviceStatus: searchDeviceStatus.value
   }
   let result = await deviceListService(params);
   //渲染视图
@@ -63,6 +65,13 @@ const searchDevice = () => {
 //重置搜索
 const resetSearch = () => {
   searchDeviceId.value = ''
+  searchDeviceStatus.value = -1
+  pageNum.value = 1
+  queryDeviceList()
+}
+
+//状态筛选变化
+const onStatusChange = () => {
   pageNum.value = 1
   queryDeviceList()
 }
@@ -227,12 +236,18 @@ const closeVideoDialog = () => {
                 <div class="extra">
                     <el-input v-model="searchDeviceId" placeholder="输入设备ID搜索"
                               style="width: 240px; margin-right: 10px" clearable
-                              @clear="resetSearch"
+                              @clear="searchDevice"
                               @keyup.enter="searchDevice">
                         <template #prefix>
                             <el-icon><Search /></el-icon>
                         </template>
                     </el-input>
+                    <el-select v-model="searchDeviceStatus" placeholder="设备状态"
+                               style="width: 130px; margin-right: 10px" @change="onStatusChange">
+                        <el-option label="全部" :value="-1" />
+                        <el-option label="已开启" :value="1" />
+                        <el-option label="未开启" :value="0" />
+                    </el-select>
                     <el-button type="primary" @click="searchDevice">搜索</el-button>
                     <el-button type="primary" @click="openAddDrawer" style="margin-left: 10px">添加设备</el-button>
                 </div>

@@ -19,6 +19,8 @@ public:
     RtpConnectDelegate(){}
     virtual ~RtpConnectDelegate(){}
     virtual void onNetConnectError(const std::string &callID) = 0;
+    // 回放推流完成（文件播放结束）
+    virtual void onPlaybackComplete(const std::string &callID, int dialogId) = 0;
 };
 
 #endif //GB28181_CLIENT_RTP_CLIENT_I_H

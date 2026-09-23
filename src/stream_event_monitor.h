@@ -27,6 +27,9 @@ public:
     virtual void onStartPushStream(const std::string &callId, std::shared_ptr<CallerParam> param) = 0;
 
     virtual void onStopPushStream(const std::string &callId) = 0;
+
+    // 回放推流完成回调（文件播放结束）
+    virtual void onPlaybackComplete(const std::string &callId, int dialogId) = 0;
 };
 
 NS_END

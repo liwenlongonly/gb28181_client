@@ -62,7 +62,7 @@ export const deviceUpdateService = (params)=>{
     return request.post('/device/update', jsonParams);
 }
 
-// 设备列表的接口的函数（支持按设备ID搜索）
+// 设备列表的接口的函数（支持按设备ID搜索和状态筛选）
 export const deviceListService = (params)=>{
     const jsonParams = {
         "page_size":params.pageSize,
@@ -71,6 +71,10 @@ export const deviceListService = (params)=>{
     // 可选的设备ID搜索
     if(params.deviceSipId){
         jsonParams["device_sip_id"] = params.deviceSipId;
+    }
+    // 可选的设备状态筛选（-1=全部, 0=关闭, 1=开启）
+    if(params.deviceStatus !== undefined && params.deviceStatus !== null && params.deviceStatus !== -1){
+        jsonParams["device_status"] = params.deviceStatus;
     }
     return request.post('/device/list', jsonParams);
 }

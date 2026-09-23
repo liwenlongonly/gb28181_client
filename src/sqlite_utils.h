@@ -35,8 +35,8 @@ public:
     bool modifyDeviceStatus(const std::string &deviceSipId, const int deviceStatus);
     bool updateDeviceInfo(std::shared_ptr<DeviceConfig> deviceConfig);
     DeviceVec queryDevice(int pageSize, int pageNum);
-    DeviceVec searchDevice(const std::string &deviceSipId, int pageSize, int pageNum);
-    int searchDeviceCount(const std::string &deviceSipId);
+    DeviceVec searchDevice(const std::string &deviceSipId, int pageSize, int pageNum, int deviceStatus = -1);
+    int searchDeviceCount(const std::string &deviceSipId, int deviceStatus = -1);
     DeviceVec queryAllDevice();
     int getDeviceTotalCount();
     bool isExistLocalHost(int localPort);

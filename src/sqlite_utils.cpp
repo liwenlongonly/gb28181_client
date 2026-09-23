@@ -180,11 +180,15 @@ DeviceVec SQLiteUtils::queryDevice(int pageSize, int pageNum) {
     return deviceVec;
 }
 
-DeviceVec SQLiteUtils::searchDevice(const std::string &deviceSipId, int pageSize, int pageNum) {
+DeviceVec SQLiteUtils::searchDevice(const std::string &deviceSipId, int pageSize, int pageNum, int deviceStatus) {
+    std::string condition = fmt::format("device_sip_id LIKE '%{}%'", deviceSipId);
+    if (deviceStatus >= 0) {
+        condition += fmt::format(" AND device_status = {}", deviceStatus);
+    }
     std::string exeStr{
-        "SELECT * FROM {} WHERE device_sip_id LIKE '%{}%' ORDER BY created_at DESC LIMIT {} OFFSET {};"
+        "SELECT * FROM {} WHERE " + condition + " ORDER BY created_at DESC LIMIT {} OFFSET {};"
     };
-    std::string sqlStr = fmt::format(exeStr, table_name_, deviceSipId, pageSize, (pageNum - 1) * pageSize);
+    std::string sqlStr = fmt::format(exeStr, table_name_, pageSize, (pageNum - 1) * pageSize);
     LOG_INFO(SQL_LOG, "search sql: {}", sqlStr);
     DeviceVec deviceVec;
     try {
@@ -213,9 +217,13 @@ DeviceVec SQLiteUtils::searchDevice(const std::string &deviceSipId, int pageSize
     return deviceVec;
 }
 
-int SQLiteUtils::searchDeviceCount(const std::string &deviceSipId) {
-    std::string exeStr = "SELECT COUNT(*) FROM {} WHERE device_sip_id LIKE '%{}%';";
-    std::string sqlStr = fmt::format(exeStr, table_name_, deviceSipId);
+int SQLiteUtils::searchDeviceCount(const std::string &deviceSipId, int deviceStatus) {
+    std::string condition = fmt::format("device_sip_id LIKE '%{}%'", deviceSipId);
+    if (deviceStatus >= 0) {
+        condition += fmt::format(" AND device_status = {}", deviceStatus);
+    }
+    std::string exeStr = "SELECT COUNT(*) FROM {} WHERE " + condition + ";";
+    std::string sqlStr = fmt::format(exeStr, table_name_);
     int count{};
     try {
         std::lock_guard<std::mutex> lock(db_mutex_);

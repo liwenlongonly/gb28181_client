@@ -35,6 +35,8 @@ public:
     uint32_t ssrc;
     // 会话名称: "Play" 实时点播, "Playback" 回放
     std::string sessionName;
+    // eXosip 对话ID，用于回放完成后发送 BYE
+    int dialogId{-1};
 };
 
 class SipClient {
@@ -45,6 +47,9 @@ public:
     void close();
 
     void setEventDelegate(std::shared_ptr<StreamEventMonitor> monitor);
+
+    // 主动发送 BYE 终止通话（用于回放完成后）
+    void sendBye(int did);
 
 private:
     void processRequest();

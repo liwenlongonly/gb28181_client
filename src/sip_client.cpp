@@ -124,6 +124,28 @@ void SipClient::setEventDelegate(std::shared_ptr<StreamEventMonitor> monitor) {
     stream_event_monitor_ = monitor;
 }
 
+void SipClient::sendBye(int did) {
+    if (!sip_context_ || did < 0) {
+        LOG_ERROR(SIP_LOG, "sendBye: invalid context or did={}", did);
+        return;
+    }
+    osip_message_t *bye = nullptr;
+    eXosip_lock(sip_context_);
+    int ret = eXosip_call_build_request(sip_context_, did, "BYE", &bye);
+    if (ret != 0 || bye == nullptr) {
+        eXosip_unlock(sip_context_);
+        LOG_ERROR(SIP_LOG, "sendBye: build BYE request failed, did={}", did);
+        return;
+    }
+    ret = eXosip_call_send_request(sip_context_, did, bye);
+    eXosip_unlock(sip_context_);
+    if (ret != 0) {
+        LOG_ERROR(SIP_LOG, "sendBye: send BYE failed, did={}", did);
+    } else {
+        LOG_INFO(SIP_LOG, "sendBye: BYE sent successfully, did={}", did);
+    }
+}
+
 void SipClient::processRequest() {
     while (is_running_) {
         auto evt = std::shared_ptr<eXosip_event_t>(
@@ -328,7 +350,11 @@ void SipClient::processRequest() {
             }
             case eXosip_event_type::EXOSIP_CALL_ACK: {
                 std::string sessionType = caller_param_ ? caller_param_->sessionName : "Unknown";
-                LOG_INFO(SIP_LOG, "EXOSIP_CALL_ACK tag:{}--{} session:{} begin pushing rtp stream...", from_sip_, callID, sessionType);
+                LOG_INFO(SIP_LOG, "EXOSIP_CALL_ACK tag:{}--{} session:{} did:{} begin pushing rtp stream...", from_sip_, callID, sessionType, evt->did);
+                // 存储对话ID，用于回放完成后发送 BYE
+                if(caller_param_){
+                    caller_param_->dialogId = evt->did;
+                }
                 auto delegate = stream_event_monitor_.lock();
                 if(caller_param_ && delegate){
                     delegate->onStartPushStream(callID, caller_param_);

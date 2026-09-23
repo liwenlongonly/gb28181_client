@@ -265,6 +265,12 @@ void RtpClient::process() {
 
     struct mov_reader_trackinfo_t info = {mov_video_info};
     mov_reader_getinfo(mov, &info, mediaContext);
+
+    bool isPlayback = (rtp_param_->sessionName == "Playback");
+    if (isPlayback) {
+        LOG_INFO(MSG_LOG, "start playback streaming, callId: {}", call_id_);
+    }
+
     while (is_runing_)
     {
         struct mov_packet_t pkt;
@@ -273,6 +279,15 @@ void RtpClient::process() {
         int r = mov_reader_read2(mov, onalloc, &pkt);
         if (r == 0)
         {
+            if (isPlayback) {
+                // 回放模式：文件播放结束，不循环，通知完成
+                LOG_INFO(MSG_LOG, "playback finished, callId: {}", call_id_);
+                if (auto delegate = delegate_.lock()) {
+                    delegate->onPlaybackComplete(call_id_, rtp_param_->dialogId);
+                }
+                break;
+            }
+            // 实时模式：循环播放
             int64_t ts{0};
             mov_reader_seek(mov, &ts);
             continue;

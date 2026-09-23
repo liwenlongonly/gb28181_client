@@ -390,11 +390,15 @@ void DeviceManager::deviceList(const std::string &reqBody,std::string &reply) {
         std::string device_sip_id;
         Rjson::GetStringV(device_sip_id, "device_sip_id", &dc);
 
+        // 可选的设备状态筛选（-1=全部, 0=关闭, 1=开启）
+        int device_status = -1;
+        Rjson::GetIntV(device_status, "device_status", &dc);
+
         DeviceVec deviceVec;
         int total;
-        if (!device_sip_id.empty()) {
-            deviceVec = sqlite_utils_->searchDevice(device_sip_id, page_size, page_num);
-            total = sqlite_utils_->searchDeviceCount(device_sip_id);
+        if (!device_sip_id.empty() || device_status >= 0) {
+            deviceVec = sqlite_utils_->searchDevice(device_sip_id, page_size, page_num, device_status);
+            total = sqlite_utils_->searchDeviceCount(device_sip_id, device_status);
         } else {
             deviceVec = sqlite_utils_->queryDevice(page_size, page_num);
             total = sqlite_utils_->getDeviceTotalCount();
