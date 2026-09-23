@@ -49,6 +49,7 @@ export const deviceDeleteService = (sip)=>{
 export const deviceUpdateService = (params)=>{
     const jsonParams = {
         "server_sip_id":params.serverSipId,
+        "register_domain":params.registerDomain,
         "server_ip":params.serverIp,
         "server_port":parseInt(params.serverPort),
         "device_sip_id":params.deviceSipId,

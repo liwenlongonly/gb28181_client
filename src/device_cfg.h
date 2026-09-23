@@ -14,6 +14,7 @@ class DeviceConfig{
 public:
     virtual ~DeviceConfig(){};
     std::string serverSipId;
+    std::string registerDomain;
     std::string serverIp;
     int serverPort;
     std::string deviceSipId;

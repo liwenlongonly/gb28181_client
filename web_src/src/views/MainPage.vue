@@ -139,12 +139,12 @@ const openEditDrawer = (row) => {
   deviceModel.value = {
     serverSipId: row.server_sip_id,
     serverPort: String(row.server_port),
-    registerDomain: '',
+    registerDomain: row.register_domain || '',
     serverIp: row.server_ip,
     deviceSipId: row.device_sip_id,
     localPort: String(row.local_port),
-    username: '',
-    password: '',
+    username: row.username || '',
+    password: row.password || '',
     deviceName: row.device_name,
     filePath: row.file_path
   }

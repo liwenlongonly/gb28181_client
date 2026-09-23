@@ -10,6 +10,7 @@ std::string initSQLStr = R"(
 CREATE TABLE IF NOT EXISTS {} (
    id INTEGER PRIMARY KEY AUTOINCREMENT, -- 自增主键
    server_sip_id VARCHAR(128) NOT NULL, -- 信令网关 sip id
+   register_domain VARCHAR(128) DEFAULT '', -- SIP 注册域
    server_ip VARCHAR(128) NOT NULL, -- 信令网关 ip
    server_port INTEGER NOT NULL, -- 信令网关端口
    device_sip_id VARCHAR(128) NOT NULL, -- 设备 sip id
@@ -62,6 +63,15 @@ bool SQLiteUtils::initDB(const std::string &tableName) {
             }
         }
         LOG_INFO(SQL_LOG, "SQL file executed successfully!");
+
+        // 兼容旧数据库：添加 register_domain 列（如果不存在）
+        try {
+            sqlite_db_->exec(fmt::format(
+                "ALTER TABLE {} ADD COLUMN register_domain VARCHAR(128) DEFAULT '';", tableName));
+            LOG_INFO(SQL_LOG, "Added register_domain column to existing table");
+        } catch (const std::exception&) {
+            // 列已存在，忽略错误
+        }
     } catch (const std::exception& e) {
         LOG_ERROR(SQL_LOG,"SQLite exception: {}", e.what());
         return false;
@@ -70,12 +80,13 @@ bool SQLiteUtils::initDB(const std::string &tableName) {
 }
 
 bool SQLiteUtils::addDeviceInfo(std::shared_ptr<DeviceConfig> deviceCfg) {
-    std::string insertStr = "INSERT INTO {} (server_sip_id, server_ip, server_port,"
+    std::string insertStr = "INSERT INTO {} (server_sip_id, register_domain, server_ip, server_port,"
                             "device_sip_id, local_port, username, password, manufacture,"
                             "device_name ,file_path) VALUES ";
     std::string sqlStr = fmt::format(insertStr, table_name_);
-    sqlStr += fmt::format("('{}', '{}', {}, '{}', {}, '{}', '{}', '{}', '{}', '{}');", deviceCfg->serverSipId,
-                          deviceCfg->serverIp, deviceCfg->serverPort, deviceCfg->deviceSipId, deviceCfg->localPort,
+    sqlStr += fmt::format("('{}', '{}', '{}', {}, '{}', {}, '{}', '{}', '{}', '{}', '{}');", deviceCfg->serverSipId,
+                          deviceCfg->registerDomain, deviceCfg->serverIp, deviceCfg->serverPort,
+                          deviceCfg->deviceSipId, deviceCfg->localPort,
                           deviceCfg->username, deviceCfg->password, deviceCfg->manufacture, deviceCfg->deviceName,
                           deviceCfg->filePath);
     LOG_INFO(SQL_LOG, "insert sql: {}", sqlStr);
@@ -122,6 +133,7 @@ bool SQLiteUtils::modifyDeviceStatus(const std::string &deviceSipId, const int d
 bool SQLiteUtils::updateDeviceInfo(std::shared_ptr<DeviceConfig> cfg) {
     std::string exeStr = "UPDATE {} SET "
                          "server_sip_id = '{}', "
+                         "register_domain = '{}', "
                          "server_ip = '{}', "
                          "server_port = {}, "
                          "local_port = {}, "
@@ -132,7 +144,8 @@ bool SQLiteUtils::updateDeviceInfo(std::shared_ptr<DeviceConfig> cfg) {
                          "file_path = '{}' "
                          "WHERE device_sip_id = '{}';";
     std::string sqlStr = fmt::format(exeStr, table_name_,
-                                     cfg->serverSipId, cfg->serverIp, cfg->serverPort,
+                                     cfg->serverSipId, cfg->registerDomain,
+                                     cfg->serverIp, cfg->serverPort,
                                      cfg->localPort, cfg->username, cfg->password,
                                      cfg->manufacture, cfg->deviceName, cfg->filePath,
                                      cfg->deviceSipId);
@@ -157,20 +170,21 @@ DeviceVec SQLiteUtils::queryDevice(int pageSize, int pageNum) {
     try {
         std::lock_guard<std::mutex> lock(db_mutex_);
         SQLite::Statement query(*sqlite_db_, sqlStr);
-        while(query.executeStep()) {  // 执行查询
+        while(query.executeStep()) {
             auto deviceCfg = std::make_shared<DeviceConfig>();
             deviceCfg->serverSipId = query.getColumn(1).getString();
-            deviceCfg->serverIp = query.getColumn(2).getString();
-            deviceCfg->serverPort = query.getColumn(3).getInt();
-            deviceCfg->deviceSipId= query.getColumn(4).getString();
-            deviceCfg->localPort = query.getColumn(5).getInt();
-            deviceCfg->username = query.getColumn(6).getString();
-            deviceCfg->password = query.getColumn(7).getString();
-            deviceCfg->manufacture = query.getColumn(8).getString();
-            deviceCfg->deviceName = query.getColumn(9).getString();
-            deviceCfg->filePath = query.getColumn(10).getString();
-            deviceCfg->deviceStatus = query.getColumn(11).getInt();
-            deviceCfg->createdAt = query.getColumn(12).getString();
+            deviceCfg->registerDomain = query.getColumn(2).getString();
+            deviceCfg->serverIp = query.getColumn(3).getString();
+            deviceCfg->serverPort = query.getColumn(4).getInt();
+            deviceCfg->deviceSipId = query.getColumn(5).getString();
+            deviceCfg->localPort = query.getColumn(6).getInt();
+            deviceCfg->username = query.getColumn(7).getString();
+            deviceCfg->password = query.getColumn(8).getString();
+            deviceCfg->manufacture = query.getColumn(9).getString();
+            deviceCfg->deviceName = query.getColumn(10).getString();
+            deviceCfg->filePath = query.getColumn(11).getString();
+            deviceCfg->deviceStatus = query.getColumn(12).getInt();
+            deviceCfg->createdAt = query.getColumn(13).getString();
             deviceVec.push_back(deviceCfg);
         }
     } catch (const std::exception& e) {
@@ -197,17 +211,18 @@ DeviceVec SQLiteUtils::searchDevice(const std::string &deviceSipId, int pageSize
         while(query.executeStep()) {
             auto deviceCfg = std::make_shared<DeviceConfig>();
             deviceCfg->serverSipId = query.getColumn(1).getString();
-            deviceCfg->serverIp = query.getColumn(2).getString();
-            deviceCfg->serverPort = query.getColumn(3).getInt();
-            deviceCfg->deviceSipId= query.getColumn(4).getString();
-            deviceCfg->localPort = query.getColumn(5).getInt();
-            deviceCfg->username = query.getColumn(6).getString();
-            deviceCfg->password = query.getColumn(7).getString();
-            deviceCfg->manufacture = query.getColumn(8).getString();
-            deviceCfg->deviceName = query.getColumn(9).getString();
-            deviceCfg->filePath = query.getColumn(10).getString();
-            deviceCfg->deviceStatus = query.getColumn(11).getInt();
-            deviceCfg->createdAt = query.getColumn(12).getString();
+            deviceCfg->registerDomain = query.getColumn(2).getString();
+            deviceCfg->serverIp = query.getColumn(3).getString();
+            deviceCfg->serverPort = query.getColumn(4).getInt();
+            deviceCfg->deviceSipId = query.getColumn(5).getString();
+            deviceCfg->localPort = query.getColumn(6).getInt();
+            deviceCfg->username = query.getColumn(7).getString();
+            deviceCfg->password = query.getColumn(8).getString();
+            deviceCfg->manufacture = query.getColumn(9).getString();
+            deviceCfg->deviceName = query.getColumn(10).getString();
+            deviceCfg->filePath = query.getColumn(11).getString();
+            deviceCfg->deviceStatus = query.getColumn(12).getInt();
+            deviceCfg->createdAt = query.getColumn(13).getString();
             deviceVec.push_back(deviceCfg);
         }
     } catch (const std::exception& e) {
@@ -248,20 +263,21 @@ DeviceVec SQLiteUtils::queryAllDevice(){
     try {
         std::lock_guard<std::mutex> lock(db_mutex_);
         SQLite::Statement query(*sqlite_db_, sqlStr);
-        while(query.executeStep()) {  // 执行查询
+        while(query.executeStep()) {
             auto deviceCfg = std::make_shared<DeviceConfig>();
             deviceCfg->serverSipId = query.getColumn(1).getString();
-            deviceCfg->serverIp = query.getColumn(2).getString();
-            deviceCfg->serverPort = query.getColumn(3).getInt();
-            deviceCfg->deviceSipId= query.getColumn(4).getString();
-            deviceCfg->localPort = query.getColumn(5).getInt();
-            deviceCfg->username = query.getColumn(6).getString();
+            deviceCfg->registerDomain = query.getColumn(2).getString();
+            deviceCfg->serverIp = query.getColumn(3).getString();
+            deviceCfg->serverPort = query.getColumn(4).getInt();
+            deviceCfg->deviceSipId = query.getColumn(5).getString();
+            deviceCfg->localPort = query.getColumn(6).getInt();
             deviceCfg->username = query.getColumn(7).getString();
-            deviceCfg->manufacture = query.getColumn(8).getString();
-            deviceCfg->deviceName = query.getColumn(9).getString();
-            deviceCfg->filePath = query.getColumn(10).getString();
-            deviceCfg->deviceStatus = query.getColumn(11).getInt();
-            deviceCfg->createdAt = query.getColumn(12).getString();
+            deviceCfg->password = query.getColumn(8).getString();
+            deviceCfg->manufacture = query.getColumn(9).getString();
+            deviceCfg->deviceName = query.getColumn(10).getString();
+            deviceCfg->filePath = query.getColumn(11).getString();
+            deviceCfg->deviceStatus = query.getColumn(12).getInt();
+            deviceCfg->createdAt = query.getColumn(13).getString();
             deviceVec.push_back(deviceCfg);
         }
     } catch (const std::exception& e) {

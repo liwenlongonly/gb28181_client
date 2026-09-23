@@ -125,6 +125,7 @@ void DeviceManager::deviceCreate(const std::string &reqBody,std::string &reply) 
 
         auto devcfg = std::make_shared<DeviceConfig>();
         devcfg->serverSipId = server_sip_id;
+        devcfg->registerDomain = register_domain;
         devcfg->serverIp = server_ip;
         devcfg->serverPort = server_port;
         devcfg->deviceSipId = device_sip_id;
@@ -225,6 +226,9 @@ void DeviceManager::deviceUpdate(const std::string &reqBody,std::string &reply) 
             return reply_error(reply, ERROR_MISS_PARAM, "miss param : server_sip_id");
         }
 
+        std::string register_domain;
+        Rjson::GetStringV(register_domain, "register_domain", &dc);
+
         std::string server_ip;
         if(!Rjson::GetStringV(server_ip,"server_ip", &dc)){
             return reply_error(reply, ERROR_MISS_PARAM, "miss param : server_ip");
@@ -273,6 +277,7 @@ void DeviceManager::deviceUpdate(const std::string &reqBody,std::string &reply) 
         // 构建新的配置
         auto newConfig = std::make_shared<DeviceConfig>();
         newConfig->serverSipId = server_sip_id;
+        newConfig->registerDomain = register_domain;
         newConfig->serverIp = server_ip;
         newConfig->serverPort = server_port;
         newConfig->deviceSipId = device_sip_id;
@@ -416,11 +421,14 @@ void DeviceManager::deviceList(const std::string &reqBody,std::string &reply) {
         for (auto item : deviceVec) {
             Value device = Rjson::rObject();
             device.AddMember("server_sip_id",item->serverSipId, docObj.GetAllocator());
+            device.AddMember("register_domain",item->registerDomain, docObj.GetAllocator());
             device.AddMember("server_port",item->serverPort, docObj.GetAllocator());
             device.AddMember("server_ip",item->serverIp, docObj.GetAllocator());
             device.AddMember("device_sip_id",item->deviceSipId, docObj.GetAllocator());
             device.AddMember("device_name",item->deviceName, docObj.GetAllocator());
             device.AddMember("local_port",item->localPort, docObj.GetAllocator());
+            device.AddMember("username",item->username, docObj.GetAllocator());
+            device.AddMember("password",item->password, docObj.GetAllocator());
             device.AddMember("device_status",item->deviceStatus == 0? false:true, docObj.GetAllocator());
             device.AddMember("created_at",item->createdAt, docObj.GetAllocator());
             device.AddMember("file_path",item->filePath, docObj.GetAllocator());
