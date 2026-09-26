@@ -2,8 +2,6 @@
 // Created by liwen on 2024-12-24.
 //
 
-#include <map>
-
 #include "rtp_client.h"
 #include "net_connect.h"
 #include "device_cfg.h"
@@ -24,20 +22,21 @@ NS_BEGIN
 #define BUFFER_SIZE 2 * 1024 * 1024
 
 struct MediaContext {
-    uint8_t s_buffer[BUFFER_SIZE]= {0};
-    uint8_t s_packet[BUFFER_SIZE]= {0};
+    // 大缓冲区不初始化：写入前必然被整体覆写，省去每次推流约 10MB 的 memset
+    uint8_t s_buffer[BUFFER_SIZE];
+    uint8_t s_packet[BUFFER_SIZE];
 
-    int object;
-    int streamId;
+    int object{0};
+    int streamId{-1};
 
     struct mpeg4_hevc_t s_hevc;
     struct mpeg4_avc_t s_avc;
 
-    uint8_t ps_buffer[BUFFER_SIZE] = {0};
+    uint8_t ps_buffer[BUFFER_SIZE];
     // 多分配4个字节 rtp over tcp 时使用
-    uint8_t rtp_buffer[BUFFER_SIZE+4] = {0};
+    uint8_t rtp_buffer[BUFFER_SIZE+4];
 
-    int64_t v_pts, v_dts;
+    int64_t v_pts{0}, v_dts{0};
 
     ps_muxer_t *ps{nullptr};
     uint32_t ssrc{};
@@ -49,14 +48,13 @@ struct MediaContext {
     bool send_packet_error{false};
 };
 
-inline const char *ftimestamp(uint32_t t, char *buf) {
-    sprintf(buf, "%02u:%02u:%02u.%03u", t / 3600000, (t / 60000) % 60, (t / 1000) % 60, t % 1000);
-    return buf;
-}
-
 static void *ps_alloc(void *param, size_t bytes) {
     MediaContext *mediaContext = (MediaContext *) param;
-    assert(bytes <= sizeof(mediaContext->ps_buffer));
+    // assert 在 Release 下无效，改为运行时判断，超限返回 nullptr 避免越界写
+    if(bytes > sizeof(mediaContext->ps_buffer)){
+        LOG_ERROR(MSG_LOG,"ps_alloc: bytes {} > {}", bytes, sizeof(mediaContext->ps_buffer));
+        return nullptr;
+    }
     return mediaContext->ps_buffer;
 }
 
@@ -71,7 +69,11 @@ static int ps_write(void *param, int stream, void *packet, size_t bytes) {
 
 static void *rtp_alloc(void *param, int bytes) {
     MediaContext *mediaContext = (MediaContext *) param;
-    assert(bytes <= sizeof(mediaContext->rtp_buffer)-4);
+    // 同 ps_alloc：Release 构建下也需要越界保护
+    if(bytes < 0 || static_cast<size_t>(bytes) > sizeof(mediaContext->rtp_buffer) - 4){
+        LOG_ERROR(MSG_LOG,"rtp_alloc: bytes {} > {}", bytes, sizeof(mediaContext->rtp_buffer) - 4);
+        return nullptr;
+    }
     return mediaContext->rtp_buffer+4;
 }
 
@@ -99,6 +101,10 @@ static int rtp_payload_codec_create(MediaContext *ctx, int payload, const char *
     handler.free = rtp_free;
     handler.packet = rtp_encode_packet;
     ctx->rtp_encoder = rtp_payload_encode_create(payload, encoding, seq, ssrc, &handler, ctx);
+    if(ctx->rtp_encoder == nullptr){
+        LOG_ERROR(MSG_LOG,"rtp_payload_encode_create fail!");
+        return -1;
+    }
     return 0;
 }
 
@@ -106,62 +112,42 @@ static void mov_video_info(void *param, uint32_t track, uint8_t object,
                            int width, int height, const void *extra, size_t bytes) {
     MediaContext *mediaContext = (MediaContext *) param;
     mediaContext->object = object;
+    int psi_stream_id = 0;
     if (MOV_OBJECT_H264 == object) {
         mpeg4_avc_decoder_configuration_record_load((const uint8_t *) extra, bytes, &mediaContext->s_avc);
-        mediaContext->streamId = ps_muxer_add_stream(mediaContext->ps, PSI_STREAM_H264, extra, bytes);
-        rtp_payload_codec_create(mediaContext, 96, "PS", 0, mediaContext->ssrc);
+        psi_stream_id = PSI_STREAM_H264;
     } else if (MOV_OBJECT_HEVC == object) {
         mpeg4_hevc_decoder_configuration_record_load((const uint8_t *) extra, bytes, &mediaContext->s_hevc);
-        mediaContext->streamId = ps_muxer_add_stream(mediaContext->ps, PSI_STREAM_H265, extra, bytes);
-        rtp_payload_codec_create(mediaContext, 96, "PS", 0, mediaContext->ssrc);
+        psi_stream_id = PSI_STREAM_H265;
+    } else {
+        return;
     }
+    mediaContext->streamId = ps_muxer_add_stream(mediaContext->ps, psi_stream_id, extra, bytes);
+    rtp_payload_codec_create(mediaContext, 96, "PS", 0, mediaContext->ssrc);
 }
 
 static void mov_onread(void *param, uint32_t track, const void *buffer, size_t bytes,
                        int64_t pts, int64_t dts, int flags) {
     MediaContext *mediaContext = (MediaContext *) param;
-    static char s_pts[64], s_dts[64];
-    static int64_t x_pts, x_dts;
-
+    // 注意：不要在此加 static 局部变量，多路推流并发时会被跨线程共享
+    int n = 0;
     switch (mediaContext->object) {
-        case MOV_OBJECT_H264: {
-//            printf("[H264] pts: %s, dts: %s, diff: %03d/%03d, bytes: %u%s\n", ftimestamp(pts, s_pts),
-//                   ftimestamp(dts, s_dts), (int) (pts - mediaContext->v_pts), (int) (dts - mediaContext->v_dts),
-//                   (unsigned int) bytes, flags ? " [I]" : "[P]");
+        case MOV_OBJECT_H264:
             mediaContext->v_pts = pts;
             mediaContext->v_dts = dts;
-
-            //assert(h264_is_new_access_unit((const uint8_t *) buffer + 4, bytes - 4));
-            int n = h264_mp4toannexb(&mediaContext->s_avc, buffer, bytes, mediaContext->s_packet, sizeof(mediaContext->s_packet));
-            if(n > 0){
-                ps_muxer_input(mediaContext->ps, mediaContext->streamId, flags ? 0x01 : 0x00, pts * 90, dts * 90,
-                               mediaContext->s_packet, n);
-            }
+            n = h264_mp4toannexb(&mediaContext->s_avc, buffer, bytes, mediaContext->s_packet, sizeof(mediaContext->s_packet));
             break;
-        }
-        case MOV_OBJECT_HEVC: {
-            uint8_t nalu_type = (((const uint8_t *) buffer)[4] >> 1) & 0x3F;
-
-//            printf("[H265] pts: %s, dts: %s, diff: %03d/%03d, bytes: %u%s,%d\n", ftimestamp(pts, s_pts),
-//                   ftimestamp(dts, s_dts), (int) (pts - mediaContext->v_pts), (int) (dts - mediaContext->v_dts),
-//                   (unsigned int) bytes, flags ? " [I]" : "[P]", (unsigned int) nalu_type);
+        case MOV_OBJECT_HEVC:
             mediaContext->v_pts = pts;
             mediaContext->v_dts = dts;
-
-            //assert(h265_is_new_access_unit((const uint8_t *) buffer + 4, bytes - 4));
-            int n = h265_mp4toannexb(&mediaContext->s_hevc, buffer, bytes, mediaContext->s_packet, sizeof(mediaContext->s_packet));
-            if(n > 0){
-                ps_muxer_input(mediaContext->ps, mediaContext->streamId, flags ? 0x01 : 0x00, pts * 90, dts * 90,
-                               mediaContext->s_packet, n);
-            }
+            n = h265_mp4toannexb(&mediaContext->s_hevc, buffer, bytes, mediaContext->s_packet, sizeof(mediaContext->s_packet));
             break;
-        }
         default:
-//            printf("[X] pts: %s, dts: %s, diff: %03d/%03d, bytes: %u\n", ftimestamp(pts, s_pts), ftimestamp(dts, s_dts),
-//                   (int) (pts - x_pts), (int) (dts - x_dts), (unsigned int) bytes);
-            x_pts = pts;
-            x_dts = dts;
-            break;
+            return;
+    }
+    if(n > 0){
+        ps_muxer_input(mediaContext->ps, mediaContext->streamId, flags ? 0x01 : 0x00, pts * 90, dts * 90,
+                       mediaContext->s_packet, n);
     }
 }
 
@@ -178,7 +164,7 @@ struct mov_packet_t{
 static void* onalloc(void* param, uint32_t track, size_t bytes, int64_t pts, int64_t dts, int flags)
 {
     // emulate allocation
-    struct mov_packet_t* pkt = (struct mov_packet_t*)param;
+    struct mov_packet_t* pkt = static_cast<struct mov_packet_t*>(param);
     if (pkt->bytes < bytes)
         return NULL;
     pkt->flags = flags;
@@ -207,6 +193,9 @@ int RtpClient::startPushStream(const std::string &callId, std::shared_ptr<Caller
     rtp_param_ = rtpParam;
     call_id_ = callId;
     LOG_INFO(MSG_LOG, "callId: {} rtpProtocol:{}", callId, rtpParam->rtpProtocol);
+    // 必须先置标志再创建线程：否则若 close() 恰好在 process() 线程设置 true 之前执行，
+    // false 会被覆盖成 true，导致 while 循环无法退出、close() 中 join() 死等
+    is_runing_ = true;
     process_th_ = std::thread(&RtpClient::process, this);
     return 0;
 }
@@ -229,29 +218,22 @@ void RtpClient::process() {
                           ,rtp_param_->rtpPort, rtp_param_->rtpProtocol);
     if(ret < 0){
         LOG_ERROR(MSG_LOG,"socket connect fail!");
+        // 通知上层，避免平台侧无感知干等
+        if(auto delegate = delegate_.lock()){
+            delegate->onNetConnectError(call_id_);
+        }
         return;
     }
 
-    is_runing_ = true;
     MediaContext *mediaContext = new(std::nothrow) MediaContext();
     if (mediaContext == nullptr) {
+        LOG_ERROR(MSG_LOG,"MediaContext alloc fail!");
         return;
     }
-    // 自动释放 mediaContext, 当process函数结束时
-    defer([mediaContext] {
-        if (mediaContext != nullptr) {
-            delete mediaContext;
-        }
-    });
+    // defer 按声明的逆序执行，以下声明顺序保证释放顺序为：
+    // mov -> ps -> rtp_encoder -> 文件 -> mediaContext
+    defer([mediaContext] { delete mediaContext; });
 
-    // ps 格式封装
-    struct ps_muxer_func_t handler;
-    handler.alloc = ps_alloc;
-    handler.write = ps_write;
-    handler.free = ps_free;
-    mediaContext->ps = ps_muxer_create(&handler, mediaContext);
-    mediaContext->ssrc = rtp_param_->ssrc;
-    mediaContext->net_connect = net_connect_;
     // 文件读取
     struct mov_file_cache_t file;
     memset(&file, 0, sizeof(file));
@@ -260,8 +242,38 @@ void RtpClient::process() {
         LOG_ERROR(MSG_LOG,"video file open fail!");
         return;
     }
+    defer([&file] { if(file.fp){ fclose(file.fp); file.fp = nullptr; } });
+
+    // rtp 编码器在 mov_video_info 回调中创建，提前登记释放，覆盖所有早退路径
+    defer([mediaContext] { if(mediaContext->rtp_encoder){
+        rtp_payload_encode_destroy(mediaContext->rtp_encoder);
+        mediaContext->rtp_encoder = nullptr;
+    }});
+
+    // ps 格式封装
+    struct ps_muxer_func_t handler;
+    handler.alloc = ps_alloc;
+    handler.write = ps_write;
+    handler.free = ps_free;
+    mediaContext->ps = ps_muxer_create(&handler, mediaContext);
+    if(mediaContext->ps == nullptr){
+        LOG_ERROR(MSG_LOG,"ps_muxer_create fail!");
+        return;
+    }
+    defer([mediaContext] { if(mediaContext->ps){
+        ps_muxer_destroy(mediaContext->ps);
+        mediaContext->ps = nullptr;
+    }});
+
+    mediaContext->ssrc = rtp_param_->ssrc;
+    mediaContext->net_connect = net_connect_;
 
     mov_reader_t *mov = mov_reader_create(mov_file_cache_buffer(), &file);
+    if(mov == nullptr){
+        LOG_ERROR(MSG_LOG,"mov_reader_create fail!");
+        return;
+    }
+    defer([mov] { mov_reader_destroy(mov); });
 
     struct mov_reader_trackinfo_t info = {mov_video_info};
     mov_reader_getinfo(mov, &info, mediaContext);
@@ -304,24 +316,7 @@ void RtpClient::process() {
             break;
         }
     }
-    if(mov){
-        mov_reader_destroy(mov);
-        mov = nullptr;
-    }
-
-    if(mediaContext->ps){
-        ps_muxer_destroy(mediaContext->ps);
-        mediaContext->ps = nullptr;
-    }
-
-    if (mediaContext->rtp_encoder) {
-        rtp_payload_encode_destroy(mediaContext->rtp_encoder);
-        mediaContext->rtp_encoder = nullptr;
-    }
-    if(file.fp){
-        fclose(file.fp);
-        file.fp = nullptr;
-    }
+    // 资源释放由上方 defer 统一处理（mov -> ps -> rtp_encoder -> 文件 -> mediaContext）
 }
 
 NS_END
