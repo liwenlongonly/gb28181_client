@@ -80,7 +80,7 @@ queryDeviceList();
 
 import '@vueup/vue-quill/dist/vue-quill.snow.css'
 import {Plus} from '@element-plus/icons-vue'
-import {ElMessage} from 'element-plus'
+import {ElMessage, ElMessageBox} from 'element-plus'
 
 //控制抽屉是否显示
 const visibleDrawer = ref(false)
@@ -205,6 +205,52 @@ const handleSwitchChange = async (row) => {
     }
 }
 
+// 一键关闭全部设备
+const stopAllLoading = ref(false)
+const stopAllDevices = async () => {
+  // 先查出所有处于开启状态的设备（不受当前分页限制）
+  let params = {
+    pageNum: 1,
+    pageSize: 1000,
+    deviceStatus: 1
+  }
+  let result = await deviceListService(params)
+  const runningList = result.data.items || []
+  if (runningList.length === 0) {
+    ElMessage.info('当前没有处于开启状态的设备')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+        `共有 ${runningList.length} 台设备处于开启状态，确定全部关闭吗？`,
+        '一键关闭全部设备',
+        { confirmButtonText: '确定关闭', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch (e) {
+    return // 用户取消
+  }
+
+  stopAllLoading.value = true
+  let successCount = 0
+  let failCount = 0
+  for (const item of runningList) {
+    try {
+      await deviceStopService(item.device_sip_id)
+      successCount++
+    } catch (e) {
+      failCount++
+    }
+  }
+  stopAllLoading.value = false
+  if (failCount === 0) {
+    ElMessage.success(`已关闭 ${successCount} 台设备`)
+  } else {
+    ElMessage.warning(`关闭完成：成功 ${successCount} 台，失败 ${failCount} 台`)
+  }
+  // 刷新列表
+  queryDeviceList()
+}
+
 // 视频播放相关
 const videoDialogVisible = ref(false)
 const videoUrl = ref('')
@@ -250,6 +296,8 @@ const closeVideoDialog = () => {
                     </el-select>
                     <el-button type="primary" @click="searchDevice">搜索</el-button>
                     <el-button type="primary" @click="openAddDrawer" style="margin-left: 10px">添加设备</el-button>
+                    <el-button type="danger" :loading="stopAllLoading" @click="stopAllDevices"
+                               style="margin-left: 10px">一键关闭全部设备</el-button>
                 </div>
             </div>
         </template>
